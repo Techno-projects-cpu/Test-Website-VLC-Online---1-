@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Watch Party</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="landing">
+    <h1>🎬 Watch Party</h1>
+    <p class="subtitle">Watch together. Chat together. Private rooms only.</p>
+
+    <div class="card">
+      <h2>Start a new room</h2>
+      <input id="hostName" type="text" placeholder="Your name" maxlength="20">
+      <button id="createBtn">Create Room</button>
+    </div>
+
+    <div class="card">
+      <h2>Join a room</h2>
+      <input id="joinName" type="text" placeholder="Your name" maxlength="20">
+      <input id="roomCode" type="text" placeholder="Room code">
+      <button id="joinBtn">Join Room</button>
+    </div>
+
+    <p id="errorMsg" class="error"></p>
+  </div>
+
+  <script>
+    const createBtn = document.getElementById('createBtn');
+    const joinBtn = document.getElementById('joinBtn');
+    const errorMsg = document.getElementById('errorMsg');
+
+    createBtn.addEventListener('click', async () => {
+      const name = document.getElementById('hostName').value.trim() || 'Anonymous';
+      const res = await fetch('/api/create-room');
+      const data = await res.json();
+      localStorage.setItem('watchparty-name', name);
+      window.location.href = `/room.html?id=${data.roomId}`;
+    });
+
+    joinBtn.addEventListener('click', async () => {
+      const name = document.getElementById('joinName').value.trim() || 'Anonymous';
+      const code = document.getElementById('roomCode').value.trim();
+      if (!code) {
+        errorMsg.textContent = 'Enter a room code.';
+        return;
+      }
+      const res = await fetch(`/api/room/${code}`);
+      if (!res.ok) {
+        errorMsg.textContent = 'Room not found. Check the code.';
+        return;
+      }
+      localStorage.setItem('watchparty-name', name);
+      window.location.href = `/room.html?id=${code}`;
+    });
+  </script>
+</body>
+</html>

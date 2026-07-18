@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Watch Party Room</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="room-layout">
+    <div class="main-area">
+      <div class="room-header">
+        <span>Room code: <strong id="roomCodeDisplay">...</strong></span>
+        <button id="copyLinkBtn">Copy invite link</button>
+      </div>
+
+      <div class="video-area" id="videoArea">
+        <p class="placeholder-text">🎥 Video player goes here next (step 2).<br>For now — try chatting with a friend in another tab!</p>
+        <div id="reactionLayer" class="reaction-layer"></div>
+      </div>
+
+      <div class="reaction-bar">
+        <button class="reaction-btn" data-emoji="😂">😂</button>
+        <button class="reaction-btn" data-emoji="❤️">❤️</button>
+        <button class="reaction-btn" data-emoji="😮">😮</button>
+        <button class="reaction-btn" data-emoji="👏">👏</button>
+        <button class="reaction-btn" data-emoji="🔥">🔥</button>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="participants">
+        <h3>In this room</h3>
+        <ul id="participantList"></ul>
+      </div>
+
+      <div class="chat">
+        <div id="chatLog" class="chat-log"></div>
+        <div class="chat-input-row">
+          <input id="chatInput" type="text" placeholder="Say something..." maxlength="500">
+          <button id="sendBtn">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>

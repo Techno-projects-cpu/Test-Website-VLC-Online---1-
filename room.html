@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -21,12 +22,22 @@
       </div>
 
       <div class="player-controls" id="playerControls" style="display:none;">
-        <button id="playPauseBtn">Pause</button>
-        <div class="volume-control">
-          <label for="volumeSlider">Volume</label>
-          <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1">
+        <div class="controls-row">
+          <button id="playPauseBtn">Pause</button>
+          <span id="hostLabel" class="host-label"></span>
+          <button id="stopSharingBtn" style="display:none;">Stop sharing</button>
         </div>
-        <button id="stopSharingBtn" style="display:none;">Stop sharing</button>
+        <div class="controls-row">
+          <span id="currentTimeLabel" class="time-label">0:00</span>
+          <input type="range" id="seekSlider" min="0" max="100" step="0.1" value="0" class="seek-slider">
+          <span id="durationLabel" class="time-label">0:00</span>
+        </div>
+        <div class="controls-row">
+          <div class="volume-control">
+            <label for="volumeSlider">Volume</label>
+            <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1">
+          </div>
+        </div>
       </div>
 
       <div class="share-row" id="shareRow">

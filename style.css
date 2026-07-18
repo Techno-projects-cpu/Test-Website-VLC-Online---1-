@@ -99,13 +99,18 @@ button:hover { background: #5b4bd1; }
 }
 .player-controls {
   display: flex;
-  align-items: center;
-  gap: 16px;
+  flex-direction: column;
+  gap: 8px;
   margin-top: 10px;
   padding: 10px 14px;
   background: #f7f7f9;
   border: 1px solid #e5e5ea;
   border-radius: 10px;
+}
+.controls-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .player-controls button {
   width: auto;
@@ -117,6 +122,20 @@ button:hover { background: #5b4bd1; }
   margin-left: auto;
 }
 #stopSharingBtn:hover { background: #cc3d35; }
+.host-label {
+  color: #6c5ce7;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.time-label {
+  color: #777;
+  font-size: 0.8rem;
+  min-width: 36px;
+}
+.seek-slider {
+  flex: 1;
+  margin-bottom: 0;
+}
 .volume-control {
   display: flex;
   align-items: center;
@@ -145,6 +164,36 @@ button:hover { background: #5b4bd1; }
   background: #f7f7f9;
   border-color: #6c5ce7;
   color: #6c5ce7;
+}
+
+/* --- Mobile responsiveness --- */
+@media (max-width: 720px) {
+  .room-layout {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+  }
+  .main-area {
+    padding: 10px;
+  }
+  .video-area {
+    aspect-ratio: 16 / 9;
+    flex: none;
+  }
+  .sidebar {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid #e5e5ea;
+  }
+  .participants {
+    max-height: 100px;
+  }
+  .chat {
+    min-height: 260px;
+  }
+  .controls-row {
+    flex-wrap: wrap;
+  }
 }
 .reaction-layer {
   position: absolute;

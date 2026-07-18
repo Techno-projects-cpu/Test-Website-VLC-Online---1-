@@ -51,6 +51,42 @@ button {
 button:hover { background: #5b4bd1; }
 .error { color: #e6483f; margin-top: 10px; }
 
+/* --- Boot screen --- */
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  opacity: 1;
+  transition: opacity 0.7s ease;
+}
+.boot-screen.boot-fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+.boot-logo {
+  width: min(70vw, 420px);
+  animation: boot-logo-in 1.2s ease-out;
+}
+@keyframes boot-logo-in {
+  0% { opacity: 0; transform: scale(0.85); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* --- Powered by footer logo --- */
+.powered-by {
+  margin-top: 24px;
+  text-align: center;
+  opacity: 0.6;
+}
+.powered-by img {
+  width: 120px;
+}
+
 /* --- Room page --- */
 .room-layout {
   display: flex;

@@ -160,13 +160,18 @@ function resetPlayerUI() {
 
 // --- Someone else starts/stops sharing ---
 socket.on('host-changed', ({ hostId: hId, hostName }) => {
-  if (hId === socket.id) return; // that's me, already handled above
+  if (hId === socket.id) {
+    hostLabel.textContent = 'You are sharing';
+    return;
+  }
   hostId = hId;
   placeholderText.textContent = `⏳ Connecting to ${hostName}'s video...`;
+  hostLabel.textContent = `${hostName} is sharing`;
   showPlayerUI();
 });
 
 socket.on('host-stopped', () => {
+  hostLabel.textContent = '';
   if (!isHost) resetPlayerUI();
 });
 
@@ -243,4 +248,63 @@ mediaVideo.addEventListener('pause', () => {
 socket.on('playback-state', ({ isPlaying }) => {
   knownIsPlaying = isPlaying;
   playPauseBtn.textContent = isPlaying ? 'Pause' : 'Play';
+});
+
+// --- Seeking ---
+const seekSlider = document.getElementById('seekSlider');
+const currentTimeLabel = document.getElementById('currentTimeLabel');
+const durationLabel = document.getElementById('durationLabel');
+const hostLabel = document.getElementById('hostLabel');
+
+let isDraggingSeek = false;
+let knownDuration = 0;
+
+function formatTime(sec) {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+// Host: periodically report time, and update the label locally
+setInterval(() => {
+  if (!isHost || !mediaVideo.duration) return;
+  socket.emit('playback-time', { currentTime: mediaVideo.currentTime, duration: mediaVideo.duration });
+}, 1000);
+
+mediaVideo.addEventListener('timeupdate', () => {
+  if (!isHost || isDraggingSeek) return;
+  updateSeekUI(mediaVideo.currentTime, mediaVideo.duration);
+});
+
+function updateSeekUI(currentTime, duration) {
+  knownDuration = duration || 0;
+  currentTimeLabel.textContent = formatTime(currentTime);
+  durationLabel.textContent = formatTime(duration);
+  if (duration > 0) {
+    seekSlider.value = (currentTime / duration) * 100;
+  }
+}
+
+// Viewers get time updates from the host over the socket
+socket.on('playback-time', ({ currentTime, duration }) => {
+  if (isHost || isDraggingSeek) return;
+  updateSeekUI(currentTime, duration);
+});
+
+// Anyone can drag the seek bar; the request is routed to the host
+seekSlider.addEventListener('input', () => {
+  isDraggingSeek = true;
+  currentTimeLabel.textContent = formatTime((seekSlider.value / 100) * knownDuration);
+});
+
+seekSlider.addEventListener('change', () => {
+  const targetTime = (seekSlider.value / 100) * knownDuration;
+  socket.emit('playback-seek', { time: targetTime });
+  isDraggingSeek = false;
+});
+
+socket.on('playback-seek', ({ time }) => {
+  if (!isHost) return;
+  mediaVideo.currentTime = time;
 });

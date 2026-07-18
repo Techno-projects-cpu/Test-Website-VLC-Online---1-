@@ -133,6 +133,20 @@ io.on('connection', (socket) => {
     socket.to(currentRoom).emit('playback-state', { isPlaying });
   });
 
+  // Anyone can request a seek; routed to the host, who owns the media
+  socket.on('playback-seek', ({ time }) => {
+    const room = rooms.get(currentRoom);
+    if (!room || !room.hostId) return;
+    io.to(room.hostId).emit('playback-seek', { time });
+  });
+
+  // Host periodically reports current time/duration so everyone's progress bar matches
+  socket.on('playback-time', ({ currentTime, duration }) => {
+    const room = rooms.get(currentRoom);
+    if (!room || room.hostId !== socket.id) return;
+    socket.to(currentRoom).emit('playback-time', { currentTime, duration });
+  });
+
   socket.on('disconnect', () => {
     if (!currentRoom) return;
     const room = rooms.get(currentRoom);

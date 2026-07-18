@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,6 +8,10 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="bootScreen" class="boot-screen">
+    <img src="assets/logo.png" alt="Nezaad Industries" class="boot-logo">
+  </div>
+
   <div class="landing">
     <h1>🌌 Project Aether</h1>
     <p class="subtitle">Watch together. Chat together. Private rooms only.</p>
@@ -25,9 +30,20 @@
     </div>
 
     <p id="errorMsg" class="error"></p>
+
+    <div class="powered-by">
+      <img src="assets/logo.png" alt="Nezaad Industries">
+    </div>
   </div>
 
   <script>
+    // Boot screen — pure flex, does nothing functional
+    setTimeout(() => {
+      const boot = document.getElementById('bootScreen');
+      boot.classList.add('boot-fade-out');
+      setTimeout(() => boot.remove(), 700);
+    }, 1800);
+
     const createBtn = document.getElementById('createBtn');
     const joinBtn = document.getElementById('joinBtn');
     const errorMsg = document.getElementById('errorMsg');

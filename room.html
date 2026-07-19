@@ -15,8 +15,8 @@
       <span>Project Aether</span>
     </div>
 
-    <div class="menu-item" id="mediaMenuWrap">
-      <button class="menu-btn" id="mediaMenuBtn">Media ▾</button>
+    <div class="menu-item">
+      <button class="menu-btn" id="mediaMenuBtn">Media</button>
       <div class="menu-dropdown" id="mediaDropdown">
         <label class="menu-dropdown-item" for="filePicker">📁 Open Local File...</label>
         <input type="file" id="filePicker" accept="video/*" style="display:none;">
@@ -24,15 +24,30 @@
         <button class="menu-dropdown-item" id="menuOpenTwitch">🟣 Open Twitch Link...</button>
         <button class="menu-dropdown-item" id="menuOpenUrl">🔗 Open Direct Video URL...</button>
         <div class="menu-divider"></div>
-        <label class="menu-dropdown-item" for="subtitlePicker">💬 Load Subtitles (.srt/.vtt)...</label>
-        <input type="file" id="subtitlePicker" accept=".srt,.vtt" style="display:none;">
-        <div class="menu-divider"></div>
         <button class="menu-dropdown-item" id="menuStopSharing" style="display:none;">⏹ Stop Sharing</button>
       </div>
     </div>
 
-    <span class="menu-room-code">Room: <strong id="roomCodeDisplay">...</strong></span>
-    <button class="menu-btn" id="copyLinkBtn">Copy invite link</button>
+    <div class="menu-item">
+      <button class="menu-btn" id="subtitleMenuBtn">Subtitle</button>
+      <div class="menu-dropdown" id="subtitleDropdown">
+        <label class="menu-dropdown-item" for="subtitlePicker">💬 Load Subtitles (.srt/.vtt)...</label>
+        <input type="file" id="subtitlePicker" accept=".srt,.vtt" style="display:none;">
+        <button class="menu-dropdown-item" id="menuToggleCC">Toggle Captions</button>
+      </div>
+    </div>
+
+    <div class="menu-item">
+      <button class="menu-btn" id="viewMenuBtn">View</button>
+      <div class="menu-dropdown" id="viewDropdown">
+        <button class="menu-dropdown-item" id="menuFullscreen">⛶ Fullscreen</button>
+        <div class="menu-divider"></div>
+        <button class="menu-dropdown-item" id="menuMuteChatSound">🔔 Mute Chat Sound</button>
+      </div>
+    </div>
+
+    <span class="menu-room-code">AetherSync Room: <strong id="roomCodeDisplay">...</strong></span>
+    <button class="menu-btn menu-btn-accent" id="copyLinkBtn">Copy invite link</button>
   </div>
 
   <!-- Source input modal (used for YouTube / Twitch / direct URL) -->
@@ -54,9 +69,15 @@
           <video id="mediaVideo" playsinline><track id="subtitleTrack" kind="subtitles" src="" default></video>
           <div id="youtubePlayer" class="embed-player"></div>
           <div id="twitchPlayer" class="embed-player"></div>
+
+          <div class="volume-overlay" id="volumeOverlay" style="display:none;">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M3 10v4h4l5 5V5L7 10H3z" fill="currentColor"/></svg>
+            <input type="range" id="volumeSlider" min="0" max="100" step="1" value="100">
+          </div>
+
           <div class="placeholder-text" id="placeholderText">
             <div class="no-signal">NO SIGNAL</div>
-            <div class="placeholder-sub">Use the <strong>Media</strong> menu above to load a local file, YouTube, Twitch, or direct video link.</div>
+            <div class="placeholder-sub">Use the <strong>Media</strong> menu above to start an AetherSync — load a local file, YouTube, Twitch, or direct video link.</div>
           </div>
           <div id="reactionLayer" class="reaction-layer"></div>
         </div>
@@ -72,10 +93,6 @@
               <svg id="playIcon" viewBox="0 0 24 24" width="16" height="16"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
               <svg id="pauseIcon" viewBox="0 0 24 24" width="16" height="16" style="display:none;"><path d="M6 5h4v14H6zM14 5h4v14h-4z" fill="currentColor"/></svg>
             </button>
-            <div class="volume-control">
-              <svg viewBox="0 0 24 24" width="15" height="15"><path d="M3 10v4h4l5 5V5L7 10H3z" fill="currentColor"/></svg>
-              <input type="range" id="volumeSlider" min="0" max="100" step="1" value="100">
-            </div>
             <button id="ccBtn" class="icon-btn text-icon-btn" title="Subtitles" style="display:none;">CC</button>
             <span id="hostLabel" class="host-label"></span>
             <button id="fullscreenBtn" class="icon-btn" title="Fullscreen">

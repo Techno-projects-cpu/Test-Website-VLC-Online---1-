@@ -229,6 +229,12 @@ function resetPlayerUI() {
   durationLabel.textContent = '0:00';
 }
 
+function closeAllPeerConnections() {
+  Object.values(hostPeers).forEach((pc) => pc.close());
+  for (const k in hostPeers) delete hostPeers[k];
+  if (viewerPeer) { viewerPeer.close(); viewerPeer = null; }
+}
+
 volumeSlider.addEventListener('input', () => {
   const v = volumeSlider.value / 100;
   mediaVideo.volume = v;
@@ -242,9 +248,20 @@ document.getElementById('filePicker').addEventListener('change', (e) => {
   if (!file) return;
   mediaDropdown.classList.remove('open');
 
+  // Clean up any previous share (old file, old peer connections, old remote embeds)
+  // before starting a new one — this is what caused the "flip" glitch on file switch.
+  closeAllPeerConnections();
+  if (localStream) {
+    localStream.getTracks().forEach((t) => t.stop());
+    localStream = null;
+  }
+  youtubeDiv.innerHTML = ''; youtubeDiv.style.display = 'none'; ytPlayer = null;
+  twitchDiv.innerHTML = ''; twitchDiv.style.display = 'none'; twitchPlayerObj = null;
+
   isHost = true;
   sourceType = 'file';
   mediaVideo.style.display = 'block';
+  mediaVideo.pause();
   const url = URL.createObjectURL(file);
   mediaVideo.src = url;
   mediaVideo.muted = false;
@@ -277,6 +294,7 @@ socket.on('new-viewer', ({ viewerId }) => {
 });
 
 socket.on('webrtc-offer', ({ from, offer }) => {
+  if (viewerPeer) { viewerPeer.close(); viewerPeer = null; }
   const pc = new RTCPeerConnection(rtcConfig);
   viewerPeer = pc;
   pc.ontrack = (e) => {
@@ -298,7 +316,9 @@ socket.on('webrtc-ice-candidate', ({ from, candidate }) => {
 });
 
 // ============ REMOTE SOURCES (YouTube / Twitch / URL) ============
-socket.on('remote-source-loaded', ({ sourceType: st, sourceData, hostName }) => {
+let currentIsTwitchVod = false;
+
+socket.on('remote-source-loaded', ({ sourceType: st, sourceData, hostName, startTime }) => {
   sourceType = st;
   showPlayerActive();
   hostLabel.textContent = isHost ? 'You loaded this video' : `${hostName} loaded a video`;
@@ -308,29 +328,38 @@ socket.on('remote-source-loaded', ({ sourceType: st, sourceData, hostName }) => 
   youtubeDiv.style.display = 'none';
   twitchDiv.style.display = 'none';
 
+  const seed = startTime || 0;
+
   if (st === 'youtube') {
     youtubeDiv.style.display = 'block';
-    loadYoutubePlayer(sourceData.videoId);
+    loadYoutubePlayer(sourceData.videoId, seed);
   } else if (st === 'twitch') {
     twitchDiv.style.display = 'block';
-    loadTwitchPlayer(sourceData);
+    currentIsTwitchVod = !!sourceData.isVod;
+    loadTwitchPlayer(sourceData, seed);
   } else if (st === 'url') {
     mediaVideo.style.display = 'block';
     mediaVideo.src = sourceData.url;
+    mediaVideo.addEventListener('loadedmetadata', () => {
+      if (seed > 0) mediaVideo.currentTime = seed;
+    }, { once: true });
     mediaVideo.play().catch(() => {});
   }
 });
 
-function loadYoutubePlayer(videoId) {
+function loadYoutubePlayer(videoId, seed) {
   youtubeDiv.innerHTML = '<div id="ytTarget"></div>';
   function create() {
     ytPlayer = new YT.Player('ytTarget', {
       videoId,
       width: '100%',
       height: '100%',
-      playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0 },
+      playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0, start: Math.floor(seed || 0) },
       events: {
-        onReady: (e) => e.target.playVideo(),
+        onReady: (e) => {
+          if (seed > 0) e.target.seekTo(seed, true);
+          e.target.playVideo();
+        },
       },
     });
   }
@@ -338,12 +367,15 @@ function loadYoutubePlayer(videoId) {
   else window.onYouTubeIframeAPIReady = create;
 }
 
-function loadTwitchPlayer(data) {
+function loadTwitchPlayer(data, seed) {
   twitchDiv.innerHTML = '<div id="twitchTarget" style="width:100%;height:100%;"></div>';
   const opts = { width: '100%', height: '100%', parent: [window.location.hostname] };
   if (data.isVod) opts.video = data.videoId;
   else opts.channel = data.channel;
   twitchPlayerObj = new Twitch.Player('twitchTarget', opts);
+  if (data.isVod && seed > 0) {
+    twitchPlayerObj.addEventListener(Twitch.Player.READY, () => twitchPlayerObj.seek(seed));
+  }
 }
 
 socket.on('host-changed', ({ hostId: hId, hostName, sourceType: st }) => {
@@ -427,7 +459,25 @@ function updateSeekUI(currentTime, duration) {
 socket.on('playback-time', ({ currentTime, duration }) => {
   if (isHost || isDraggingSeek) return;
   updateSeekUI(currentTime, duration);
+  correctDrift(currentTime);
 });
+
+// Viewers' YouTube/Twitch/URL players are independent — without this, they'd
+// slowly drift apart from the host with no way to catch up.
+const DRIFT_THRESHOLD_SECONDS = 1.5;
+
+function correctDrift(hostTime) {
+  if (sourceType === 'youtube' && ytPlayer && ytPlayer.getCurrentTime) {
+    const diff = Math.abs(ytPlayer.getCurrentTime() - hostTime);
+    if (diff > DRIFT_THRESHOLD_SECONDS) ytPlayer.seekTo(hostTime, true);
+  } else if (sourceType === 'twitch' && currentIsTwitchVod && twitchPlayerObj && twitchPlayerObj.getCurrentTime) {
+    const diff = Math.abs(twitchPlayerObj.getCurrentTime() - hostTime);
+    if (diff > DRIFT_THRESHOLD_SECONDS) twitchPlayerObj.seek(hostTime);
+  } else if (sourceType === 'url' && mediaVideo.duration) {
+    const diff = Math.abs(mediaVideo.currentTime - hostTime);
+    if (diff > DRIFT_THRESHOLD_SECONDS) mediaVideo.currentTime = hostTime;
+  }
+}
 
 seekSlider.addEventListener('input', () => {
   isDraggingSeek = true;

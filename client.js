@@ -5,7 +5,6 @@ const name = localStorage.getItem('watchparty-name') || 'Anonymous';
 document.getElementById('roomCodeDisplay').textContent = roomId;
 
 const socket = io();
-
 socket.emit('join-room', { roomId, name });
 
 socket.on('join-error', (msg) => {
@@ -13,7 +12,7 @@ socket.on('join-error', (msg) => {
   window.location.href = '/';
 });
 
-// --- Participants ---
+// ============ Participants ============
 const participantList = document.getElementById('participantList');
 socket.on('participants-update', (names) => {
   participantList.innerHTML = '';
@@ -24,7 +23,7 @@ socket.on('participants-update', (names) => {
   });
 });
 
-// --- Chat ---
+// ============ Chat ============
 const chatLog = document.getElementById('chatLog');
 const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
@@ -39,7 +38,6 @@ function appendChatLine(html) {
 socket.on('chat-message', (msg) => {
   appendChatLine(`<span class="chat-name">${escapeHtml(msg.name)}:</span> ${escapeHtml(msg.text)}`);
 });
-
 socket.on('system-message', (text) => {
   appendChatLine(`<span class="chat-system">${escapeHtml(text)}</span>`);
 });
@@ -50,21 +48,14 @@ function sendMessage() {
   socket.emit('chat-message', text);
   chatInput.value = '';
 }
-
 sendBtn.addEventListener('click', sendMessage);
-chatInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') sendMessage();
-});
+chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
 
-// --- Reactions ---
+// ============ Reactions ============
 const reactionLayer = document.getElementById('reactionLayer');
-
 document.querySelectorAll('.reaction-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    socket.emit('reaction', btn.dataset.emoji);
-  });
+  btn.addEventListener('click', () => socket.emit('reaction', btn.dataset.emoji));
 });
-
 socket.on('reaction', ({ emoji }) => {
   const el = document.createElement('span');
   el.className = 'floating-emoji';
@@ -74,12 +65,9 @@ socket.on('reaction', ({ emoji }) => {
   setTimeout(() => el.remove(), 2000);
 });
 
-// --- Invite link ---
+// ============ Invite link ============
 document.getElementById('copyLinkBtn').addEventListener('click', () => {
-  const link = window.location.href;
-  navigator.clipboard.writeText(link).then(() => {
-    alert('Invite link copied! Send it to a friend.');
-  });
+  navigator.clipboard.writeText(window.location.href).then(() => alert('Invite link copied! Send it to a friend.'));
 });
 
 function escapeHtml(str) {
@@ -88,36 +76,175 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// ============ Video sharing (WebRTC) ============
+// ============ Menu bar ============
+const mediaMenuBtn = document.getElementById('mediaMenuBtn');
+const mediaDropdown = document.getElementById('mediaDropdown');
+const menuStopSharing = document.getElementById('menuStopSharing');
+
+mediaMenuBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  mediaDropdown.classList.toggle('open');
+});
+document.addEventListener('click', () => mediaDropdown.classList.remove('open'));
+mediaDropdown.addEventListener('click', (e) => e.stopPropagation());
+
+// ============ Source input modal (YouTube / Twitch / URL) ============
+const sourceModal = document.getElementById('sourceModal');
+const sourceModalTitle = document.getElementById('sourceModalTitle');
+const sourceModalInput = document.getElementById('sourceModalInput');
+const sourceModalCancel = document.getElementById('sourceModalCancel');
+const sourceModalConfirm = document.getElementById('sourceModalConfirm');
+let pendingSourceType = null;
+
+function openSourceModal(type, title, placeholder) {
+  pendingSourceType = type;
+  sourceModalTitle.textContent = title;
+  sourceModalInput.placeholder = placeholder;
+  sourceModalInput.value = '';
+  sourceModal.style.display = 'flex';
+  sourceModalInput.focus();
+  mediaDropdown.classList.remove('open');
+}
+sourceModalCancel.addEventListener('click', () => { sourceModal.style.display = 'none'; });
+
+document.getElementById('menuOpenYoutube').addEventListener('click', () =>
+  openSourceModal('youtube', 'Open YouTube Link', 'https://youtube.com/watch?v=...'));
+document.getElementById('menuOpenTwitch').addEventListener('click', () =>
+  openSourceModal('twitch', 'Open Twitch Link', 'https://twitch.tv/channelname or a VOD link'));
+document.getElementById('menuOpenUrl').addEventListener('click', () =>
+  openSourceModal('url', 'Open Direct Video URL', 'https://example.com/video.mp4'));
+
+sourceModalConfirm.addEventListener('click', () => {
+  const value = sourceModalInput.value.trim();
+  if (!value) return;
+  sourceModal.style.display = 'none';
+
+  if (pendingSourceType === 'youtube') {
+    const videoId = extractYoutubeId(value);
+    if (!videoId) { alert('Could not read a YouTube video ID from that link.'); return; }
+    socket.emit('start-remote-source', { sourceType: 'youtube', sourceData: { videoId } });
+  } else if (pendingSourceType === 'twitch') {
+    const twitchData = extractTwitchData(value);
+    if (!twitchData) { alert('Could not read a Twitch channel or video from that link.'); return; }
+    socket.emit('start-remote-source', { sourceType: 'twitch', sourceData: twitchData });
+  } else if (pendingSourceType === 'url') {
+    socket.emit('start-remote-source', { sourceType: 'url', sourceData: { url: value } });
+  }
+});
+
+function extractYoutubeId(url) {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=)([\w-]{11})/,
+    /(?:youtu\.be\/)([\w-]{11})/,
+    /(?:youtube\.com\/embed\/)([\w-]{11})/,
+    /(?:youtube\.com\/shorts\/)([\w-]{11})/,
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
+  }
+  if (/^[\w-]{11}$/.test(url.trim())) return url.trim();
+  return null;
+}
+
+function extractTwitchData(url) {
+  const vodMatch = url.match(/twitch\.tv\/videos\/(\d+)/);
+  if (vodMatch) return { videoId: vodMatch[1], isVod: true };
+  const channelMatch = url.match(/twitch\.tv\/([a-zA-Z0-9_]+)/);
+  if (channelMatch) return { channel: channelMatch[1], isVod: false };
+  if (/^[a-zA-Z0-9_]+$/.test(url.trim())) return { channel: url.trim(), isVod: false };
+  return null;
+}
+
+// ============ Shared player state ============
+const mediaVideo = document.getElementById('mediaVideo');
+const youtubeDiv = document.getElementById('youtubePlayer');
+const twitchDiv = document.getElementById('twitchPlayer');
+const placeholderText = document.getElementById('placeholderText');
+const playerControls = document.getElementById('playerControls');
+const playIcon = document.getElementById('playIcon');
+const pauseIcon = document.getElementById('pauseIcon');
+const playPauseBtn = document.getElementById('playPauseBtn');
+const hostLabel = document.getElementById('hostLabel');
+const volumeSlider = document.getElementById('volumeSlider');
+const seekSlider = document.getElementById('seekSlider');
+const currentTimeLabel = document.getElementById('currentTimeLabel');
+const durationLabel = document.getElementById('durationLabel');
 
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-const mediaVideo = document.getElementById('mediaVideo');
-const placeholderText = document.getElementById('placeholderText');
-const playerControls = document.getElementById('playerControls');
-const playPauseBtn = document.getElementById('playPauseBtn');
-const stopSharingBtn = document.getElementById('stopSharingBtn');
-const volumeSlider = document.getElementById('volumeSlider');
-const shareRow = document.getElementById('shareRow');
-const filePicker = document.getElementById('filePicker');
-
 let isHost = false;
-let hostId = null;
+let sourceType = null; // 'file' | 'youtube' | 'twitch' | 'url'
 let localStream = null;
-const hostPeers = {};      // used when I am the host: viewerId -> RTCPeerConnection
-let viewerPeer = null;     // used when I am a viewer: single connection to the host
+const hostPeers = {};
+let viewerPeer = null;
+let ytPlayer = null;
+let ytReady = false;
+let twitchPlayerObj = null;
+let knownIsPlaying = true;
+let knownDuration = 0;
+let isDraggingSeek = false;
 
-// Volume is always local-only — never sent over the network.
+function formatTime(sec) {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function showPlayerActive() {
+  placeholderText.style.display = 'none';
+  playerControls.style.display = 'flex';
+}
+
+function resetPlayerUI() {
+  isHost = false;
+  sourceType = null;
+
+  mediaVideo.pause();
+  mediaVideo.removeAttribute('src');
+  mediaVideo.srcObject = null;
+  mediaVideo.style.display = 'none';
+  mediaVideo.load();
+
+  youtubeDiv.style.display = 'none';
+  youtubeDiv.innerHTML = '';
+  ytPlayer = null;
+
+  twitchDiv.style.display = 'none';
+  twitchDiv.innerHTML = '';
+  twitchPlayerObj = null;
+
+  placeholderText.style.display = 'flex';
+  playerControls.style.display = 'none';
+  hostLabel.textContent = '';
+  menuStopSharing.style.display = 'none';
+
+  Object.values(hostPeers).forEach((pc) => pc.close());
+  for (const k in hostPeers) delete hostPeers[k];
+  if (viewerPeer) { viewerPeer.close(); viewerPeer = null; }
+
+  seekSlider.value = 0;
+  currentTimeLabel.textContent = '0:00';
+  durationLabel.textContent = '0:00';
+}
+
 volumeSlider.addEventListener('input', () => {
-  mediaVideo.volume = parseFloat(volumeSlider.value);
+  const v = volumeSlider.value / 100;
+  mediaVideo.volume = v;
+  if (ytPlayer && ytPlayer.setVolume) ytPlayer.setVolume(volumeSlider.value);
+  if (twitchPlayerObj && twitchPlayerObj.setVolume) twitchPlayerObj.setVolume(v);
 });
 
-// --- Becoming the host (picking a local file) ---
-filePicker.addEventListener('change', () => {
-  const file = filePicker.files[0];
+// ============ FILE MODE (WebRTC) ============
+document.getElementById('filePicker').addEventListener('change', (e) => {
+  const file = e.target.files[0];
   if (!file) return;
+  mediaDropdown.classList.remove('open');
 
   isHost = true;
+  sourceType = 'file';
+  mediaVideo.style.display = 'block';
   const url = URL.createObjectURL(file);
   mediaVideo.src = url;
   mediaVideo.muted = false;
@@ -128,183 +255,194 @@ filePicker.addEventListener('change', () => {
     socket.emit('start-sharing');
   };
 
-  showPlayerUI();
-  stopSharingBtn.style.display = 'inline-block';
+  showPlayerActive();
+  menuStopSharing.style.display = 'block';
+  hostLabel.textContent = 'You are sharing';
 });
 
-stopSharingBtn.addEventListener('click', () => {
+document.getElementById('menuStopSharing').addEventListener('click', () => {
   socket.emit('stop-sharing');
   resetPlayerUI();
 });
 
-function showPlayerUI() {
-  placeholderText.style.display = 'none';
-  playerControls.style.display = 'flex';
-  shareRow.style.display = 'none';
-}
-
-function resetPlayerUI() {
-  isHost = false;
-  hostId = null;
-  mediaVideo.pause();
-  mediaVideo.removeAttribute('src');
-  mediaVideo.load();
-  placeholderText.style.display = 'block';
-  placeholderText.textContent = '🎥 No one is sharing a video yet.\nPick a file from your computer to start watching together.';
-  playerControls.style.display = 'none';
-  shareRow.style.display = 'flex';
-  Object.values(hostPeers).forEach((pc) => pc.close());
-  for (const k in hostPeers) delete hostPeers[k];
-  if (viewerPeer) { viewerPeer.close(); viewerPeer = null; }
-}
-
-// --- Someone else starts/stops sharing ---
-socket.on('host-changed', ({ hostId: hId, hostName }) => {
-  if (hId === socket.id) {
-    hostLabel.textContent = 'You are sharing';
-    return;
-  }
-  hostId = hId;
-  placeholderText.textContent = `⏳ Connecting to ${hostName}'s video...`;
-  hostLabel.textContent = `${hostName} is sharing`;
-  showPlayerUI();
-});
-
-socket.on('host-stopped', () => {
-  hostLabel.textContent = '';
-  if (!isHost) resetPlayerUI();
-});
-
-// --- Host: connect to each viewer that needs a peer connection ---
 socket.on('new-viewer', ({ viewerId }) => {
   if (!localStream) return;
   const pc = new RTCPeerConnection(rtcConfig);
   hostPeers[viewerId] = pc;
-
   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
-
-  pc.onicecandidate = (e) => {
-    if (e.candidate) socket.emit('webrtc-ice-candidate', { to: viewerId, candidate: e.candidate });
-  };
-
+  pc.onicecandidate = (e) => { if (e.candidate) socket.emit('webrtc-ice-candidate', { to: viewerId, candidate: e.candidate }); };
   pc.createOffer()
     .then((offer) => pc.setLocalDescription(offer).then(() => offer))
     .then((offer) => socket.emit('webrtc-offer', { to: viewerId, offer }));
 });
 
-// --- Viewer: receive offer from host, answer it ---
 socket.on('webrtc-offer', ({ from, offer }) => {
-  hostId = from;
   const pc = new RTCPeerConnection(rtcConfig);
   viewerPeer = pc;
-
   pc.ontrack = (e) => {
+    mediaVideo.style.display = 'block';
     mediaVideo.srcObject = e.streams[0];
     mediaVideo.play();
   };
-
-  pc.onicecandidate = (e) => {
-    if (e.candidate) socket.emit('webrtc-ice-candidate', { to: from, candidate: e.candidate });
-  };
-
+  pc.onicecandidate = (e) => { if (e.candidate) socket.emit('webrtc-ice-candidate', { to: from, candidate: e.candidate }); };
   pc.setRemoteDescription(offer)
     .then(() => pc.createAnswer())
     .then((answer) => pc.setLocalDescription(answer).then(() => answer))
     .then((answer) => socket.emit('webrtc-answer', { to: from, answer }));
 });
 
-socket.on('webrtc-answer', ({ from, answer }) => {
-  const pc = hostPeers[from];
-  if (pc) pc.setRemoteDescription(answer);
-});
-
+socket.on('webrtc-answer', ({ from, answer }) => { const pc = hostPeers[from]; if (pc) pc.setRemoteDescription(answer); });
 socket.on('webrtc-ice-candidate', ({ from, candidate }) => {
   const pc = isHost ? hostPeers[from] : viewerPeer;
   if (pc) pc.addIceCandidate(candidate).catch(() => {});
 });
 
-// --- Play/pause: anyone can trigger it, host applies it, host reports the result ---
-let knownIsPlaying = true;
+// ============ REMOTE SOURCES (YouTube / Twitch / URL) ============
+socket.on('remote-source-loaded', ({ sourceType: st, sourceData, hostName }) => {
+  sourceType = st;
+  showPlayerActive();
+  hostLabel.textContent = isHost ? 'You loaded this video' : `${hostName} loaded a video`;
+  menuStopSharing.style.display = isHost ? 'block' : 'none';
 
+  mediaVideo.style.display = 'none';
+  youtubeDiv.style.display = 'none';
+  twitchDiv.style.display = 'none';
+
+  if (st === 'youtube') {
+    youtubeDiv.style.display = 'block';
+    loadYoutubePlayer(sourceData.videoId);
+  } else if (st === 'twitch') {
+    twitchDiv.style.display = 'block';
+    loadTwitchPlayer(sourceData);
+  } else if (st === 'url') {
+    mediaVideo.style.display = 'block';
+    mediaVideo.src = sourceData.url;
+    mediaVideo.play().catch(() => {});
+  }
+});
+
+function loadYoutubePlayer(videoId) {
+  youtubeDiv.innerHTML = '<div id="ytTarget"></div>';
+  function create() {
+    ytPlayer = new YT.Player('ytTarget', {
+      videoId,
+      width: '100%',
+      height: '100%',
+      playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0 },
+      events: {
+        onReady: (e) => e.target.playVideo(),
+      },
+    });
+  }
+  if (window.YT && window.YT.Player) create();
+  else window.onYouTubeIframeAPIReady = create;
+}
+
+function loadTwitchPlayer(data) {
+  twitchDiv.innerHTML = '<div id="twitchTarget" style="width:100%;height:100%;"></div>';
+  const opts = { width: '100%', height: '100%', parent: [window.location.hostname] };
+  if (data.isVod) opts.video = data.videoId;
+  else opts.channel = data.channel;
+  twitchPlayerObj = new Twitch.Player('twitchTarget', opts);
+}
+
+socket.on('host-changed', ({ hostId: hId, hostName, sourceType: st }) => {
+  isHost = (hId === socket.id);
+  if (isHost) return;
+  if (!sourceType) {
+    placeholderText.querySelector('.no-signal').textContent = `CONNECTING TO ${hostName.toUpperCase()}...`;
+  }
+});
+
+socket.on('host-stopped', () => {
+  if (!isHost) resetPlayerUI();
+});
+
+// ============ Playback control (play/pause/seek, unified across modes) ============
 playPauseBtn.addEventListener('click', () => {
   const action = knownIsPlaying ? 'pause' : 'play';
   socket.emit('playback-control', { action });
 });
 
 socket.on('playback-control', ({ action }) => {
-  if (!isHost) return;
-  if (action === 'pause') mediaVideo.pause();
-  else mediaVideo.play();
+  if (sourceType === 'file') {
+    if (!isHost) return;
+    if (action === 'pause') mediaVideo.pause(); else mediaVideo.play();
+  } else if (sourceType === 'youtube' && ytPlayer) {
+    if (action === 'pause') ytPlayer.pauseVideo(); else ytPlayer.playVideo();
+    setPlayingUI(action === 'play');
+  } else if (sourceType === 'twitch' && twitchPlayerObj) {
+    if (action === 'pause') twitchPlayerObj.pause(); else twitchPlayerObj.play();
+    setPlayingUI(action === 'play');
+  } else if (sourceType === 'url') {
+    if (action === 'pause') mediaVideo.pause(); else mediaVideo.play();
+  }
 });
 
-// Host reports actual state changes (covers the host clicking their own video too)
-mediaVideo.addEventListener('play', () => {
-  if (isHost) socket.emit('playback-state', { isPlaying: true });
-});
-mediaVideo.addEventListener('pause', () => {
-  if (isHost) socket.emit('playback-state', { isPlaying: false });
-});
-
-socket.on('playback-state', ({ isPlaying }) => {
+function setPlayingUI(isPlaying) {
   knownIsPlaying = isPlaying;
-  playPauseBtn.textContent = isPlaying ? 'Pause' : 'Play';
-});
-
-// --- Seeking ---
-const seekSlider = document.getElementById('seekSlider');
-const currentTimeLabel = document.getElementById('currentTimeLabel');
-const durationLabel = document.getElementById('durationLabel');
-const hostLabel = document.getElementById('hostLabel');
-
-let isDraggingSeek = false;
-let knownDuration = 0;
-
-function formatTime(sec) {
-  if (!isFinite(sec) || sec < 0) sec = 0;
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60).toString().padStart(2, '0');
-  return `${m}:${s}`;
+  playIcon.style.display = isPlaying ? 'none' : 'block';
+  pauseIcon.style.display = isPlaying ? 'block' : 'none';
 }
 
-// Host: periodically report time, and update the label locally
+mediaVideo.addEventListener('play', () => {
+  setPlayingUI(true);
+  if (isHost && sourceType === 'file') socket.emit('playback-state', { isPlaying: true });
+});
+mediaVideo.addEventListener('pause', () => {
+  setPlayingUI(false);
+  if (isHost && sourceType === 'file') socket.emit('playback-state', { isPlaying: false });
+});
+
+socket.on('playback-state', ({ isPlaying }) => setPlayingUI(isPlaying));
+
+// --- Seeking ---
 setInterval(() => {
-  if (!isHost || !mediaVideo.duration) return;
-  socket.emit('playback-time', { currentTime: mediaVideo.currentTime, duration: mediaVideo.duration });
+  if (!isHost) return;
+  if (sourceType === 'file' && mediaVideo.duration) {
+    socket.emit('playback-time', { currentTime: mediaVideo.currentTime, duration: mediaVideo.duration });
+  } else if (sourceType === 'youtube' && ytPlayer && ytPlayer.getDuration) {
+    const d = ytPlayer.getDuration();
+    if (d) socket.emit('playback-time', { currentTime: ytPlayer.getCurrentTime(), duration: d });
+  } else if (sourceType === 'twitch' && twitchPlayerObj && twitchPlayerObj.getDuration) {
+    const d = twitchPlayerObj.getDuration();
+    if (d) socket.emit('playback-time', { currentTime: twitchPlayerObj.getCurrentTime(), duration: d });
+  }
 }, 1000);
 
 mediaVideo.addEventListener('timeupdate', () => {
-  if (!isHost || isDraggingSeek) return;
-  updateSeekUI(mediaVideo.currentTime, mediaVideo.duration);
+  if (isDraggingSeek) return;
+  if (sourceType === 'url' || (sourceType === 'file' && isHost)) {
+    updateSeekUI(mediaVideo.currentTime, mediaVideo.duration);
+  }
 });
 
 function updateSeekUI(currentTime, duration) {
   knownDuration = duration || 0;
   currentTimeLabel.textContent = formatTime(currentTime);
   durationLabel.textContent = formatTime(duration);
-  if (duration > 0) {
-    seekSlider.value = (currentTime / duration) * 100;
-  }
+  if (duration > 0) seekSlider.value = Math.min(1000, (currentTime / duration) * 1000);
 }
 
-// Viewers get time updates from the host over the socket
 socket.on('playback-time', ({ currentTime, duration }) => {
   if (isHost || isDraggingSeek) return;
   updateSeekUI(currentTime, duration);
 });
 
-// Anyone can drag the seek bar; the request is routed to the host
 seekSlider.addEventListener('input', () => {
   isDraggingSeek = true;
-  currentTimeLabel.textContent = formatTime((seekSlider.value / 100) * knownDuration);
+  currentTimeLabel.textContent = formatTime((seekSlider.value / 1000) * knownDuration);
 });
 
 seekSlider.addEventListener('change', () => {
-  const targetTime = (seekSlider.value / 100) * knownDuration;
+  const targetTime = (seekSlider.value / 1000) * knownDuration;
   socket.emit('playback-seek', { time: targetTime });
   isDraggingSeek = false;
 });
 
 socket.on('playback-seek', ({ time }) => {
-  if (!isHost) return;
-  mediaVideo.currentTime = time;
+  if (sourceType === 'file' && isHost) mediaVideo.currentTime = time;
+  else if (sourceType === 'youtube' && ytPlayer) ytPlayer.seekTo(time, true);
+  else if (sourceType === 'twitch' && twitchPlayerObj) twitchPlayerObj.seek(time);
+  else if (sourceType === 'url') mediaVideo.currentTime = time;
 });

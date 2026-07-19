@@ -21,7 +21,7 @@ function getRoomSummary(roomId) {
 
 app.get('/api/create-room', (req, res) => {
   const roomId = uuidv4().slice(0, 6);
-  rooms.set(roomId, { participants: new Map(), hostId: null, sourceType: null, sourceData: null });
+  rooms.set(roomId, { participants: new Map(), hostId: null, sourceType: null, sourceData: null, lastTime: 0 });
   res.json({ roomId });
 });
 
@@ -59,7 +59,7 @@ io.on('connection', (socket) => {
       if (room.sourceType === 'file') {
         io.to(room.hostId).emit('new-viewer', { viewerId: socket.id });
       } else if (room.sourceData) {
-        socket.emit('remote-source-loaded', { sourceType: room.sourceType, sourceData: room.sourceData, hostName });
+        socket.emit('remote-source-loaded', { sourceType: room.sourceType, sourceData: room.sourceData, hostName, startTime: room.lastTime });
       }
     }
   });
@@ -81,6 +81,7 @@ io.on('connection', (socket) => {
     room.hostId = socket.id;
     room.sourceType = 'file';
     room.sourceData = null;
+    room.lastTime = 0;
 
     io.to(currentRoom).emit('host-changed', { hostId: socket.id, hostName: currentName, sourceType: 'file' });
 
@@ -96,9 +97,10 @@ io.on('connection', (socket) => {
     room.hostId = socket.id;
     room.sourceType = sourceType;
     room.sourceData = sourceData;
+    room.lastTime = 0;
 
     io.to(currentRoom).emit('host-changed', { hostId: socket.id, hostName: currentName, sourceType });
-    io.to(currentRoom).emit('remote-source-loaded', { sourceType, sourceData, hostName: currentName });
+    io.to(currentRoom).emit('remote-source-loaded', { sourceType, sourceData, hostName: currentName, startTime: 0 });
   });
 
   socket.on('stop-sharing', () => {
@@ -107,6 +109,7 @@ io.on('connection', (socket) => {
     room.hostId = null;
     room.sourceType = null;
     room.sourceData = null;
+    room.lastTime = 0;
     io.to(currentRoom).emit('host-stopped');
   });
 
@@ -132,6 +135,7 @@ io.on('connection', (socket) => {
   socket.on('playback-seek', ({ time }) => {
     const room = rooms.get(currentRoom);
     if (!room || !room.hostId) return;
+    room.lastTime = time;
     if (room.sourceType === 'file') io.to(room.hostId).emit('playback-seek', { time });
     else io.to(currentRoom).emit('playback-seek', { time });
   });
@@ -139,6 +143,7 @@ io.on('connection', (socket) => {
   socket.on('playback-time', ({ currentTime, duration }) => {
     const room = rooms.get(currentRoom);
     if (!room || room.hostId !== socket.id) return;
+    room.lastTime = currentTime;
     socket.to(currentRoom).emit('playback-time', { currentTime, duration });
   });
 
@@ -152,6 +157,7 @@ io.on('connection', (socket) => {
       room.hostId = null;
       room.sourceType = null;
       room.sourceData = null;
+      room.lastTime = 0;
       socket.to(currentRoom).emit('host-stopped');
     }
 

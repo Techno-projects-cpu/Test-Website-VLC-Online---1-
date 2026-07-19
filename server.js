@@ -21,7 +21,7 @@ function getRoomSummary(roomId) {
 
 app.get('/api/create-room', (req, res) => {
   const roomId = uuidv4().slice(0, 6);
-  rooms.set(roomId, { participants: new Map(), hostId: null, sourceType: null, sourceData: null, lastTime: 0 });
+  rooms.set(roomId, { participants: new Map(), hostId: null, sourceType: null, sourceData: null, lastTime: 0, subtitleText: null });
   res.json({ roomId });
 });
 
@@ -61,6 +61,10 @@ io.on('connection', (socket) => {
       } else if (room.sourceData) {
         socket.emit('remote-source-loaded', { sourceType: room.sourceType, sourceData: room.sourceData, hostName, startTime: room.lastTime });
       }
+
+      if (room.subtitleText) {
+        socket.emit('subtitle-loaded', { vttText: room.subtitleText });
+      }
     }
   });
 
@@ -81,6 +85,7 @@ io.on('connection', (socket) => {
     room.hostId = socket.id;
     room.sourceType = 'file';
     room.sourceData = null;
+    room.subtitleText = null;
     room.lastTime = 0;
 
     io.to(currentRoom).emit('host-changed', { hostId: socket.id, hostName: currentName, sourceType: 'file' });
@@ -109,6 +114,7 @@ io.on('connection', (socket) => {
     room.hostId = null;
     room.sourceType = null;
     room.sourceData = null;
+    room.subtitleText = null;
     room.lastTime = 0;
     io.to(currentRoom).emit('host-stopped');
   });
@@ -147,6 +153,13 @@ io.on('connection', (socket) => {
     socket.to(currentRoom).emit('playback-time', { currentTime, duration });
   });
 
+  socket.on('load-subtitles', ({ vttText }) => {
+    const room = rooms.get(currentRoom);
+    if (!room || room.hostId !== socket.id || !vttText) return;
+    room.subtitleText = vttText;
+    io.to(currentRoom).emit('subtitle-loaded', { vttText });
+  });
+
   socket.on('disconnect', () => {
     if (!currentRoom) return;
     const room = rooms.get(currentRoom);
@@ -157,6 +170,7 @@ io.on('connection', (socket) => {
       room.hostId = null;
       room.sourceType = null;
       room.sourceData = null;
+      room.subtitleText = null;
       room.lastTime = 0;
       socket.to(currentRoom).emit('host-stopped');
     }

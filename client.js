@@ -37,9 +37,43 @@ function appendChatLine(html) {
 
 socket.on('chat-message', (msg) => {
   appendChatLine(`<span class="chat-name">${escapeHtml(msg.name)}:</span> ${escapeHtml(msg.text)}`);
+  if (msg.name !== name) playChatDing();
 });
 socket.on('system-message', (text) => {
   appendChatLine(`<span class="chat-system">${escapeHtml(text)}</span>`);
+});
+
+// --- Chat notification sound (synthesized — no audio file needed) ---
+let chatSoundMuted = localStorage.getItem('watchparty-mute-chat-sound') === 'true';
+
+function playChatDing() {
+  if (chatSoundMuted) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(740, ctx.currentTime);
+    osc.frequency.setValueAtTime(988, ctx.currentTime + 0.09);
+    gain.gain.setValueAtTime(0.001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (e) { /* ignore — audio isn't critical */ }
+}
+
+const menuMuteChatSound = document.getElementById('menuMuteChatSound');
+function updateMuteChatLabel() {
+  menuMuteChatSound.textContent = chatSoundMuted ? '🔕 Unmute Chat Sound' : '🔔 Mute Chat Sound';
+}
+updateMuteChatLabel();
+menuMuteChatSound.addEventListener('click', () => {
+  chatSoundMuted = !chatSoundMuted;
+  localStorage.setItem('watchparty-mute-chat-sound', chatSoundMuted);
+  updateMuteChatLabel();
 });
 
 function sendMessage() {
@@ -76,17 +110,27 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// ============ Menu bar ============
-const mediaMenuBtn = document.getElementById('mediaMenuBtn');
+// ============ Menu bar (generic — works for Media / Subtitle / View) ============
+const allDropdowns = document.querySelectorAll('.menu-dropdown');
 const mediaDropdown = document.getElementById('mediaDropdown');
 const menuStopSharing = document.getElementById('menuStopSharing');
 
-mediaMenuBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  mediaDropdown.classList.toggle('open');
+function closeAllDropdowns() {
+  allDropdowns.forEach((d) => d.classList.remove('open'));
+}
+
+document.querySelectorAll('.menu-item').forEach((item) => {
+  const btn = item.querySelector('.menu-btn');
+  const dropdown = item.querySelector('.menu-dropdown');
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = dropdown.classList.contains('open');
+    closeAllDropdowns();
+    if (!isOpen) dropdown.classList.add('open');
+  });
+  dropdown.addEventListener('click', (e) => e.stopPropagation());
 });
-document.addEventListener('click', () => mediaDropdown.classList.remove('open'));
-mediaDropdown.addEventListener('click', (e) => e.stopPropagation());
+document.addEventListener('click', closeAllDropdowns);
 
 // ============ Source input modal (YouTube / Twitch / URL) ============
 const sourceModal = document.getElementById('sourceModal');
@@ -167,6 +211,7 @@ const pauseIcon = document.getElementById('pauseIcon');
 const playPauseBtn = document.getElementById('playPauseBtn');
 const hostLabel = document.getElementById('hostLabel');
 const volumeSlider = document.getElementById('volumeSlider');
+const volumeOverlay = document.getElementById('volumeOverlay');
 const seekSlider = document.getElementById('seekSlider');
 const currentTimeLabel = document.getElementById('currentTimeLabel');
 const durationLabel = document.getElementById('durationLabel');
@@ -195,6 +240,7 @@ function formatTime(sec) {
 function showPlayerActive() {
   placeholderText.style.display = 'none';
   playerControls.style.display = 'flex';
+  volumeOverlay.style.display = 'flex';
 }
 
 function resetPlayerUI() {
@@ -217,6 +263,7 @@ function resetPlayerUI() {
 
   placeholderText.style.display = 'flex';
   playerControls.style.display = 'none';
+  volumeOverlay.style.display = 'none';
   hostLabel.textContent = '';
   menuStopSharing.style.display = 'none';
 
@@ -519,6 +566,7 @@ fullscreenBtn.addEventListener('click', () => {
     else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
   }
 });
+document.getElementById('menuFullscreen').addEventListener('click', () => fullscreenBtn.click());
 
 // ============ Subtitles ============
 const subtitleTrack = document.getElementById('subtitleTrack');
@@ -560,3 +608,4 @@ ccBtn.addEventListener('click', () => {
     }
   }
 });
+document.getElementById('menuToggleCC').addEventListener('click', () => ccBtn.click());

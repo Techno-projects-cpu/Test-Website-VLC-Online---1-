@@ -227,6 +227,10 @@ function resetPlayerUI() {
   seekSlider.value = 0;
   currentTimeLabel.textContent = '0:00';
   durationLabel.textContent = '0:00';
+
+  subtitleTrack.src = '';
+  ccBtn.style.display = 'none';
+  ccBtn.classList.remove('cc-active');
 }
 
 function closeAllPeerConnections() {
@@ -333,10 +337,12 @@ socket.on('remote-source-loaded', ({ sourceType: st, sourceData, hostName, start
   if (st === 'youtube') {
     youtubeDiv.style.display = 'block';
     loadYoutubePlayer(sourceData.videoId, seed);
+    ccBtn.style.display = 'flex';
   } else if (st === 'twitch') {
     twitchDiv.style.display = 'block';
     currentIsTwitchVod = !!sourceData.isVod;
     loadTwitchPlayer(sourceData, seed);
+    ccBtn.style.display = 'none';
   } else if (st === 'url') {
     mediaVideo.style.display = 'block';
     mediaVideo.src = sourceData.url;
@@ -344,6 +350,7 @@ socket.on('remote-source-loaded', ({ sourceType: st, sourceData, hostName, start
       if (seed > 0) mediaVideo.currentTime = seed;
     }, { once: true });
     mediaVideo.play().catch(() => {});
+    ccBtn.style.display = 'none';
   }
 });
 
@@ -495,4 +502,61 @@ socket.on('playback-seek', ({ time }) => {
   else if (sourceType === 'youtube' && ytPlayer) ytPlayer.seekTo(time, true);
   else if (sourceType === 'twitch' && twitchPlayerObj) twitchPlayerObj.seek(time);
   else if (sourceType === 'url') mediaVideo.currentTime = time;
+});
+
+// ============ Fullscreen ============
+const playerShell = document.querySelector('.player-shell');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+fullscreenBtn.addEventListener('click', () => {
+  const inFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+  if (!inFullscreen) {
+    if (playerShell.requestFullscreen) playerShell.requestFullscreen();
+    else if (playerShell.webkitRequestFullscreen) playerShell.webkitRequestFullscreen();
+    else if (mediaVideo.webkitEnterFullscreen) mediaVideo.webkitEnterFullscreen(); // iOS Safari fallback
+  } else {
+    if (document.exitFullscreen) document.exitFullscreen();
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+  }
+});
+
+// ============ Subtitles ============
+const subtitleTrack = document.getElementById('subtitleTrack');
+const ccBtn = document.getElementById('ccBtn');
+let subtitlesEnabled = true;
+
+document.getElementById('subtitlePicker').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  mediaDropdown.classList.remove('open');
+  let text = await file.text();
+  if (!text.trim().startsWith('WEBVTT')) text = srtToVtt(text);
+  socket.emit('load-subtitles', { vttText: text });
+});
+
+function srtToVtt(srt) {
+  let vtt = 'WEBVTT\n\n' + srt.replace(/\r+/g, '');
+  vtt = vtt.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+  return vtt;
+}
+
+socket.on('subtitle-loaded', ({ vttText }) => {
+  const blob = new Blob([vttText], { type: 'text/vtt' });
+  subtitleTrack.src = URL.createObjectURL(blob);
+  if (mediaVideo.textTracks[0]) mediaVideo.textTracks[0].mode = subtitlesEnabled ? 'showing' : 'hidden';
+  if (sourceType === 'file' || sourceType === 'url') ccBtn.style.display = 'flex';
+});
+
+ccBtn.addEventListener('click', () => {
+  subtitlesEnabled = !subtitlesEnabled;
+  ccBtn.classList.toggle('cc-active', subtitlesEnabled);
+  if (mediaVideo.textTracks[0]) mediaVideo.textTracks[0].mode = subtitlesEnabled ? 'showing' : 'hidden';
+  if (sourceType === 'youtube' && ytPlayer) {
+    if (subtitlesEnabled) {
+      if (ytPlayer.loadModule) ytPlayer.loadModule('captions');
+      if (ytPlayer.setOption) ytPlayer.setOption('captions', 'track', {});
+    } else if (ytPlayer.unloadModule) {
+      ytPlayer.unloadModule('captions');
+    }
+  }
 });

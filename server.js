@@ -1,7 +1,6 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
@@ -10,27 +9,22 @@ const io = new Server(server);
 
 app.use(express.static(__dirname));
 
-// In-memory room storage.
-// Each room: { participants: Map(socketId -> name), hostId: socketId|null }
+// Each room: { participants: Map(socketId -> name), hostId, sourceType, sourceData }
+// sourceType: null | 'file' | 'youtube' | 'twitch' | 'url'
 const rooms = new Map();
 
 function getRoomSummary(roomId) {
   const room = rooms.get(roomId);
   if (!room) return null;
-  return {
-    id: roomId,
-    participants: Array.from(room.participants.values()),
-  };
+  return { id: roomId, participants: Array.from(room.participants.values()) };
 }
 
-// Create a new room, return its id
 app.get('/api/create-room', (req, res) => {
-  const roomId = uuidv4().slice(0, 6); // short shareable code
-  rooms.set(roomId, { participants: new Map(), hostId: null });
+  const roomId = uuidv4().slice(0, 6);
+  rooms.set(roomId, { participants: new Map(), hostId: null, sourceType: null, sourceData: null });
   res.json({ roomId });
 });
 
-// Check if a room exists (used when someone tries to join via code)
 app.get('/api/room/:id', (req, res) => {
   const room = rooms.get(req.params.id);
   if (!room) return res.status(404).json({ error: 'Room not found' });
@@ -58,23 +52,21 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('system-message', `${currentName} joined the room.`);
     socket.emit('joined-room', { roomId, name: currentName });
 
-    // If someone is already sharing, tell the new joiner and tell the host
-    // to open a connection to them.
     if (room.hostId && room.hostId !== socket.id) {
       const hostName = room.participants.get(room.hostId) || 'Someone';
-      socket.emit('host-changed', { hostId: room.hostId, hostName });
-      io.to(room.hostId).emit('new-viewer', { viewerId: socket.id });
+      socket.emit('host-changed', { hostId: room.hostId, hostName, sourceType: room.sourceType });
+
+      if (room.sourceType === 'file') {
+        io.to(room.hostId).emit('new-viewer', { viewerId: socket.id });
+      } else if (room.sourceData) {
+        socket.emit('remote-source-loaded', { sourceType: room.sourceType, sourceData: room.sourceData, hostName });
+      }
     }
   });
 
   socket.on('chat-message', (text) => {
     if (!currentRoom) return;
-    const trimmed = String(text).slice(0, 500);
-    io.to(currentRoom).emit('chat-message', {
-      name: currentName,
-      text: trimmed,
-      time: Date.now(),
-    });
+    io.to(currentRoom).emit('chat-message', { name: currentName, text: String(text).slice(0, 500), time: Date.now() });
   });
 
   socket.on('reaction', (emoji) => {
@@ -82,65 +74,68 @@ io.on('connection', (socket) => {
     io.to(currentRoom).emit('reaction', { name: currentName, emoji });
   });
 
-  // --- Video sharing / WebRTC signaling ---
-
+  // --- Local file sharing / WebRTC signaling ---
   socket.on('start-sharing', () => {
     const room = rooms.get(currentRoom);
     if (!room) return;
     room.hostId = socket.id;
+    room.sourceType = 'file';
+    room.sourceData = null;
 
-    io.to(currentRoom).emit('host-changed', { hostId: socket.id, hostName: currentName });
+    io.to(currentRoom).emit('host-changed', { hostId: socket.id, hostName: currentName, sourceType: 'file' });
 
-    // Tell the new host to open a connection to every existing viewer
     for (const viewerId of room.participants.keys()) {
-      if (viewerId !== socket.id) {
-        socket.emit('new-viewer', { viewerId });
-      }
+      if (viewerId !== socket.id) socket.emit('new-viewer', { viewerId });
     }
+  });
+
+  // --- YouTube / Twitch / direct URL sharing (each client renders its own player) ---
+  socket.on('start-remote-source', ({ sourceType, sourceData }) => {
+    const room = rooms.get(currentRoom);
+    if (!room || !sourceType || !sourceData) return;
+    room.hostId = socket.id;
+    room.sourceType = sourceType;
+    room.sourceData = sourceData;
+
+    io.to(currentRoom).emit('host-changed', { hostId: socket.id, hostName: currentName, sourceType });
+    io.to(currentRoom).emit('remote-source-loaded', { sourceType, sourceData, hostName: currentName });
   });
 
   socket.on('stop-sharing', () => {
     const room = rooms.get(currentRoom);
     if (!room || room.hostId !== socket.id) return;
     room.hostId = null;
+    room.sourceType = null;
+    room.sourceData = null;
     io.to(currentRoom).emit('host-stopped');
   });
 
-  socket.on('webrtc-offer', ({ to, offer }) => {
-    io.to(to).emit('webrtc-offer', { from: socket.id, offer });
-  });
+  socket.on('webrtc-offer', ({ to, offer }) => io.to(to).emit('webrtc-offer', { from: socket.id, offer }));
+  socket.on('webrtc-answer', ({ to, answer }) => io.to(to).emit('webrtc-answer', { from: socket.id, answer }));
+  socket.on('webrtc-ice-candidate', ({ to, candidate }) => io.to(to).emit('webrtc-ice-candidate', { from: socket.id, candidate }));
 
-  socket.on('webrtc-answer', ({ to, answer }) => {
-    io.to(to).emit('webrtc-answer', { from: socket.id, answer });
-  });
-
-  socket.on('webrtc-ice-candidate', ({ to, candidate }) => {
-    io.to(to).emit('webrtc-ice-candidate', { from: socket.id, candidate });
-  });
-
-  // Anyone can request play/pause; only routed to the current host, who
-  // actually owns the media and applies the change.
+  // File mode: only the host owns the media, route control there.
+  // Remote modes (youtube/twitch/url): every client has an independent player, broadcast to all.
   socket.on('playback-control', ({ action }) => {
     const room = rooms.get(currentRoom);
     if (!room || !room.hostId) return;
-    io.to(room.hostId).emit('playback-control', { action });
+    if (room.sourceType === 'file') io.to(room.hostId).emit('playback-control', { action });
+    else io.to(currentRoom).emit('playback-control', { action });
   });
 
-  // Host broadcasts the resulting state so everyone's UI (button label) matches
   socket.on('playback-state', ({ isPlaying }) => {
     const room = rooms.get(currentRoom);
     if (!room || room.hostId !== socket.id) return;
-    socket.to(currentRoom).emit('playback-state', { isPlaying });
+    io.to(currentRoom).emit('playback-state', { isPlaying });
   });
 
-  // Anyone can request a seek; routed to the host, who owns the media
   socket.on('playback-seek', ({ time }) => {
     const room = rooms.get(currentRoom);
     if (!room || !room.hostId) return;
-    io.to(room.hostId).emit('playback-seek', { time });
+    if (room.sourceType === 'file') io.to(room.hostId).emit('playback-seek', { time });
+    else io.to(currentRoom).emit('playback-seek', { time });
   });
 
-  // Host periodically reports current time/duration so everyone's progress bar matches
   socket.on('playback-time', ({ currentTime, duration }) => {
     const room = rooms.get(currentRoom);
     if (!room || room.hostId !== socket.id) return;
@@ -155,19 +150,17 @@ io.on('connection', (socket) => {
 
     if (room.hostId === socket.id) {
       room.hostId = null;
+      room.sourceType = null;
+      room.sourceData = null;
       socket.to(currentRoom).emit('host-stopped');
     }
 
     io.to(currentRoom).emit('participants-update', Array.from(room.participants.values()));
     socket.to(currentRoom).emit('system-message', `${currentName} left the room.`);
 
-    if (room.participants.size === 0) {
-      rooms.delete(currentRoom);
-    }
+    if (room.participants.size === 0) rooms.delete(currentRoom);
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Watch party server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Watch party server running on port ${PORT}`));

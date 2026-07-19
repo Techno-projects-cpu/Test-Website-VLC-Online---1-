@@ -137,6 +137,8 @@ button:hover { background: #ffa733; }
 .menu-divider { height: 1px; background: #333338; margin: 6px 2px; }
 .menu-room-code { margin-left: auto; color: #999; font-size: 0.8rem; font-family: 'SF Mono', Consolas, monospace; }
 .menu-room-code strong { color: #ff8800; }
+.menu-btn-accent { width: auto; background: #ff8800; color: #111; font-weight: 600; }
+.menu-btn-accent:hover { background: #ffa733; color: #111; }
 
 /* ============ Source modal ============ */
 .source-modal {
@@ -261,8 +263,22 @@ button:hover { background: #ffa733; }
   flex: 1;
 }
 
-.volume-control { display: flex; align-items: center; gap: 8px; color: #999; }
-.volume-control input[type="range"] { width: 90px; }
+.volume-overlay {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  background: rgba(12, 12, 14, 0.75);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  padding: 6px 12px;
+  color: #ccc;
+  z-index: 20;
+}
+.volume-overlay input[type="range"] { width: 80px; }
 
 /* --- Custom sliders that actually reach the visual edges --- */
 input[type="range"] {
@@ -350,7 +366,7 @@ input[type="range"]::-webkit-slider-runnable-track {
   .text-icon-btn { padding: 0 12px; font-size: 0.75rem; }
   input[type="range"]::-webkit-slider-thumb { width: 18px; height: 18px; margin-top: -7px; }
   input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; }
-  .volume-control input[type="range"] { width: 60px; }
+  .volume-overlay input[type="range"] { width: 55px; }
   .reaction-btn { padding: 10px 14px; }
   .menu-dropdown { min-width: 220px; }
 }

@@ -237,7 +237,29 @@ button:hover { background: #ffa733; }
   color: #eee; flex-shrink: 0;
 }
 .icon-btn:hover { background: #ff8800; color: #111; }
+.text-icon-btn {
+  width: auto;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.text-icon-btn.cc-active { background: #ff8800; color: #111; }
 .host-label { color: #ff8800; font-size: 0.78rem; margin-left: auto; }
+
+/* --- Fullscreen sizing --- */
+.player-shell:fullscreen,
+.player-shell:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  border: none;
+}
+.player-shell:fullscreen .video-area,
+.player-shell:-webkit-full-screen .video-area {
+  flex: 1;
+}
 
 .volume-control { display: flex; align-items: center; gap: 8px; color: #999; }
 .volume-control input[type="range"] { width: 90px; }
@@ -323,4 +345,12 @@ input[type="range"]::-webkit-slider-runnable-track {
   .chat { min-height: 260px; }
   .menu-brand span { display: none; }
   .menu-room-code { font-size: 0.7rem; }
+
+  .icon-btn { width: 40px; height: 40px; }
+  .text-icon-btn { padding: 0 12px; font-size: 0.75rem; }
+  input[type="range"]::-webkit-slider-thumb { width: 18px; height: 18px; margin-top: -7px; }
+  input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; }
+  .volume-control input[type="range"] { width: 60px; }
+  .reaction-btn { padding: 10px 14px; }
+  .menu-dropdown { min-width: 220px; }
 }
